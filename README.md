@@ -34,15 +34,46 @@ A powerful desktop application for managing contacts from multiple sources, with
 
 ### Prerequisites
 
-- Python 3.8 or higher
-- pip (Python package installer)
+#### Windows
+- Python 3.8 or higher (from python.org)
+- pip (included with Python)
 
-### Required Python Packages
+#### macOS
+Using Homebrew:
+```
+# Install Python if not already installed
+brew install python
 
-Run the following command to install required packages:
+# Install Qt (required for PySide6)
+brew install qt
 
+# Ensure python/pip are in your PATH
+echo 'export PATH="/opt/homebrew/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
+```
+
+### Installing Dependencies
+
+#### Using pip (Windows/macOS)
 ```
 pip install -r requirements.txt
+```
+
+#### Using Homebrew (macOS)
+```
+# Core dependencies
+brew install pyside@6
+brew install sqlite
+
+# Python packages (still needed even with brew)
+pip install google-auth-oauthlib google-auth google-api-python-client
+pip install aiosqlite SQLAlchemy aiohttp
+```
+
+Note for macOS users: If you encounter any issues with PySide6 after installing via brew, try:
+```
+pip uninstall PySide6  # Remove any pip version
+brew link --force pyside@6
 ```
 
 The requirements.txt includes:
