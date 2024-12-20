@@ -1,7 +1,7 @@
 from typing import List, Tuple
 from thefuzz import fuzz
 from dataclasses import dataclass
-from src.core.contact_manager import Contact
+from core.contact_manager import Contact
 
 @dataclass
 class MatchScore:

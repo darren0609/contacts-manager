@@ -6,8 +6,6 @@ project_root = str(Path(__file__).parent.parent.parent)
 sys.path.append(project_root)
 
 from src.models.contact_model import Base
-from src.models.duplicate_cache import DuplicateCache
-from src.models.source_config import SourceConfig
 from sqlalchemy.ext.asyncio import create_async_engine
 import asyncio
 
