@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Contact Sources - Contact Manager</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container">
+            <a class="navbar-brand" href="/">Contact Manager</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/">
+                            <i class="bi bi-people"></i> Contacts
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/sources">
+                            <i class="bi bi-database"></i> Sources
+                            <span class="badge bg-light text-dark" id="sourcesCount">0</span>
+                        </a>
+                    </li>
+                </ul>
+                <button class="btn btn-light" id="syncButton">
+                    <i class="bi bi-arrow-repeat"></i> Sync All
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <div class="row mb-4">
+            <div class="col">
+                <h2>Contact Sources</h2>
+                <p class="text-muted">Manage your contact data sources</p>
+            </div>
+            <div class="col-auto">
+                <div class="dropdown">
+                    <button class="btn btn-primary dropdown-toggle" type="button" id="addSourceBtn" data-bs-toggle="dropdown">
+                        <i class="bi bi-plus-lg"></i> Add Source
+                    </button>
+                    <ul class="dropdown-menu">
+                        <li><a class="dropdown-item" href="#" data-source-type="gmail">
+                            <i class="bi bi-google"></i> Gmail Contacts
+                        </a></li>
+                        <li><a class="dropdown-item" href="#" data-source-type="csv">
+                            <i class="bi bi-file-earmark-text"></i> Import CSV
+                        </a></li>
+                        <li><a class="dropdown-item" href="#" data-source-type="carddav">
+                            <i class="bi bi-server"></i> CardDAV Server
+                        </a></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="row" id="sourcesList">
+            <!-- Sources will be dynamically added here -->
+        </div>
+    </div>
+
+    <!-- Source Configuration Modals -->
+    <div class="modal fade" id="gmailConfigModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Configure Gmail Contacts</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Click the button below to authorize access to your Gmail contacts:</p>
+                    <button class="btn btn-primary" id="gmailAuthBtn">
+                        <i class="bi bi-google"></i> Authorize Gmail
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="csvConfigModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Import CSV File</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="csvUploadForm">
+                        <div class="mb-3">
+                            <label class="form-label">Select CSV File</label>
+                            <input type="file" class="form-control" accept=".csv" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Field Mapping</label>
+                            <div id="csvFieldMapping">
+                                <!-- Field mapping will be added here after file selection -->
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="importCsvBtn">Import</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="carddavConfigModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Configure CardDAV Server</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="carddavConfigForm">
+                        <div class="mb-3">
+                            <label class="form-label">Server URL</label>
+                            <input type="url" class="form-control" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Username</label>
+                            <input type="text" class="form-control" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Password</label>
+                            <input type="password" class="form-control" required>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="saveCarddavBtn">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add this modal -->
+    <div class="modal fade" id="syncInfoModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Sync Information</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="syncInfoContent">
+                        <!-- Content will be dynamically added -->
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="confirmSyncBtn">
+                        Proceed with Sync
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="/static/js/sources.js"></script>
+</body>
+</html> 

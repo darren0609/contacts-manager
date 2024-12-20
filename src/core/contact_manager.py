@@ -1,9 +1,14 @@
 from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass
 from abc import ABC, abstractmethod
-from sqlalchemy import select
+from sqlalchemy import select, func, update
 from datetime import datetime
 from thefuzz import fuzz
+import uuid
+import asyncio
+import traceback
+from src.core.app_state import app_state
+import json
 
 @dataclass
 class Contact:
@@ -36,6 +41,14 @@ class ContactManager:
         self.db = db_session
         self.sources: Dict[str, ContactSource] = {}
     
+    @property
+    def cache_ready(self):
+        return app_state.cache_ready
+    
+    @cache_ready.setter
+    def cache_ready(self, value):
+        app_state.cache_ready = value
+    
     async def add_source(self, source: ContactSource):
         """Register a new contact source with a unique identifier."""
         source_id = source.__class__.__name__
@@ -66,38 +79,35 @@ class ContactManager:
         """Save contact to database or update if it already exists."""
         from src.models.contact_model import ContactModel
         
-        # Check if contact already exists
-        async with self.db.begin():
-            # Look for existing contact
-            stmt = select(ContactModel).where(ContactModel.id == contact.id)
-            result = await self.db.execute(stmt)
-            existing_contact = result.scalar_one_or_none()
-            
-            if existing_contact:
-                # Update existing contact
-                existing_contact.first_name = contact.first_name
-                existing_contact.last_name = contact.last_name
-                existing_contact.email = contact.email
-                existing_contact.phone = contact.phone
-                existing_contact.contact_metadata = contact.metadata
-                existing_contact.updated_at = datetime.utcnow()
-            else:
-                # Create new contact
-                contact_model = ContactModel(
-                    id=contact.id,
-                    first_name=contact.first_name,
-                    last_name=contact.last_name,
-                    email=contact.email,
-                    phone=contact.phone,
-                    source=contact.source,
-                    source_id=contact.source_id,
-                    contact_metadata=contact.metadata,
-                    created_at=datetime.utcnow(),
-                    updated_at=datetime.utcnow()
-                )
-                self.db.add(contact_model)
+        # Look for existing contact
+        stmt = select(ContactModel).where(ContactModel.id == contact.id)
+        result = await self.db.execute(stmt)
+        existing_contact = result.scalar_one_or_none()
         
-        await self.db.commit()
+        if existing_contact:
+            # Update existing contact
+            existing_contact.first_name = contact.first_name
+            existing_contact.last_name = contact.last_name
+            existing_contact.email = contact.email
+            existing_contact.phone = contact.phone
+            existing_contact.contact_metadata = contact.metadata
+            existing_contact.updated_at = datetime.utcnow()
+        else:
+            # Create new contact
+            contact_model = ContactModel(
+                id=contact.id,
+                first_name=contact.first_name,
+                last_name=contact.last_name,
+                email=contact.email,
+                phone=contact.phone,
+                source=contact.source,
+                source_id=contact.source_id,
+                contact_metadata=contact.metadata,
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow(),
+                deleted=False
+            )
+            self.db.add(contact_model)
     
     async def find_duplicates(self) -> List[Tuple[Contact, Contact, float, List[str]]]:
         """Find potential duplicate contacts using fuzzy matching."""
@@ -105,25 +115,24 @@ class ContactManager:
         contacts = []
         
         # Get all contacts from database
-        async with self.db.begin():
-            from src.models.contact_model import ContactModel
-            stmt = select(ContactModel)
-            result = await self.db.execute(stmt)
-            db_contacts = result.scalars().all()
-            
-            # Convert to Contact objects
-            for db_contact in db_contacts:
-                contact = Contact(
-                    id=db_contact.id,
-                    first_name=db_contact.first_name,
-                    last_name=db_contact.last_name,
-                    email=db_contact.email,
-                    phone=db_contact.phone,
-                    source=db_contact.source,
-                    source_id=db_contact.source_id,
-                    metadata=db_contact.contact_metadata
-                )
-                contacts.append(contact)
+        from src.models.contact_model import ContactModel
+        stmt = select(ContactModel)
+        result = await self.db.execute(stmt)
+        db_contacts = result.scalars().all()
+        
+        # Convert to Contact objects
+        for db_contact in db_contacts:
+            contact = Contact(
+                id=db_contact.id,
+                first_name=db_contact.first_name,
+                last_name=db_contact.last_name,
+                email=db_contact.email,
+                phone=db_contact.phone,
+                source=db_contact.source,
+                source_id=db_contact.source_id,
+                metadata=db_contact.contact_metadata
+            )
+            contacts.append(contact)
         
         # Compare all contacts with each other
         for i, contact1 in enumerate(contacts):
@@ -232,23 +241,131 @@ class ContactManager:
         from src.models.contact_model import ContactModel
         from datetime import datetime
         
+        # Removed transaction block; session is managed externally
+        # Get both contacts
+        source = await self.db.get(ContactModel, source_id)
+        target = await self.db.get(ContactModel, target_id)
+        
+        if not source or not target:
+            raise ValueError("One or both contacts not found")
+        
+        # Update target contact with merged data
+        target.first_name = merged_data.get('first_name', target.first_name)
+        target.last_name = merged_data.get('last_name', target.last_name)
+        target.email = merged_data.get('email', target.email)
+        target.phone = merged_data.get('phone', target.phone)
+        target.updated_at = datetime.utcnow()
+        
+        # Delete source contact
+        await self.db.delete(source)
+    
+    async def get_all_contacts(self) -> List[Contact]:
+        """Retrieve all contacts from the database."""
+        from src.models.contact_model import ContactModel
+        from sqlalchemy import select
+        
+        query = select(ContactModel).where(ContactModel.deleted == False)
+        result = await self.db.execute(query)
+        contacts = result.scalars().all()
+        
+        return [
+            Contact(
+                id=contact.id,
+                first_name=contact.first_name,
+                last_name=contact.last_name,
+                email=contact.email,
+                phone=contact.phone,
+                source=contact.source,
+                source_id=contact.source_id,
+                metadata=contact.contact_metadata
+            )
+            for contact in contacts
+        ]
+    
+    async def get_contact(self, contact_id: str) -> Optional[Contact]:
+        """Retrieve a specific contact by ID."""
+        from src.models.contact_model import ContactModel
+        from sqlalchemy import select
+        
+        query = select(ContactModel).where(ContactModel.id == contact_id)
+        result = await self.db.execute(query)
+        contact = result.scalar_one_or_none()
+        
+        if contact is None:
+            return None
+            
+        return Contact(
+            id=contact.id,
+            first_name=contact.first_name,
+            last_name=contact.last_name,
+            email=contact.email,
+            phone=contact.phone,
+            source=contact.source,
+            source_id=contact.source_id,
+            metadata=contact.contact_metadata
+        )
+    
+    async def delete_contact(self, contact_id: str):
+        """Delete a contact from the database."""
+        from src.models.contact_model import ContactModel
+        
         async with self.db.begin():
-            # Get both contacts
-            source = await self.db.get(ContactModel, source_id)
-            target = await self.db.get(ContactModel, target_id)
+            contact = await self.db.get(ContactModel, contact_id)
+            if contact:
+                await self.db.delete(contact)
+    
+    async def update_duplicate_cache(self, progress_callback=None):
+        """Update the duplicate cache in the background"""
+        from src.models.duplicate_cache import DuplicateCache
+        from datetime import datetime
+        
+        try:
+            print("Starting duplicate cache update...")
+            # Find duplicates
+            duplicates = await self.find_duplicates()
+            print(f"Found {len(duplicates)} potential duplicates")
             
-            if not source or not target:
-                raise ValueError("One or both contacts not found")
+            if progress_callback:
+                await progress_callback(50)
             
-            # Update target contact with merged data
-            target.first_name = merged_data.get('first_name', target.first_name)
-            target.last_name = merged_data.get('last_name', target.last_name)
-            target.email = merged_data.get('email', target.email)
-            target.phone = merged_data.get('phone', target.phone)
-            target.updated_at = datetime.utcnow()
+            # Clear old cache
+            print("Clearing old cache...")
+            await self.db.execute(DuplicateCache.__table__.delete())
             
-            # Delete source contact
-            await self.db.delete(source)
+            # Insert new duplicates
+            print("Inserting new duplicates...")
+            total = len(duplicates)
+            for i, (contact1, contact2, confidence, reasons) in enumerate(duplicates):
+                cache_entry = DuplicateCache(
+                    id=str(uuid.uuid4()),
+                    contact1_id=contact1.id,
+                    contact2_id=contact2.id,
+                    confidence=confidence,
+                    reasons=reasons,
+                    last_updated=datetime.utcnow()
+                )
+                self.db.add(cache_entry)
+                
+                if i % 100 == 0:  # Log progress every 100 entries
+                    print(f"Inserted {i}/{total} duplicates")
+                
+                if progress_callback:
+                    progress = 50 + (i / total * 50)
+                    await progress_callback(progress)
             
-            # Commit changes
-            await self.db.commit()
+            print("Committing changes...")
+            await self.db.flush()
+        
+            self.cache_ready = True
+            print("Duplicate cache update completed successfully")
+            
+            # Verify the cache
+            count_query = select(func.count()).select_from(DuplicateCache)
+            result = await self.db.execute(count_query)
+            final_count = result.scalar()
+            print(f"Verified cache count: {final_count}")
+            
+        except Exception as e:
+            print(f"Error updating cache: {str(e)}")
+            print(traceback.format_exc())
+            raise
